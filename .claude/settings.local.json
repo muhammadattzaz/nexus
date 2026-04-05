@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:nexusai-db.netlify.app)",
+      "WebSearch",
+      "Bash(curl -s \"https://nexusai-db.netlify.app/\")",
+      "Bash(npx create-next-app@latest frontend --typescript --tailwind --eslint --app --src-dir --import-alias \"@/*\" --use-npm --no-git)",
+      "Bash(nest new:*)",
+      "Bash(npm install:*)",
+      "Bash(npx shadcn@latest init -d)",
+      "Bash(npm run:*)",
+      "Bash(node -e \"const m = require\\('f:/Test Practics/nexus/backend/node_modules/mongoose'\\); console.log\\(Object.keys\\(m\\).filter\\(k => k.includes\\('Filter'\\)\\)\\)\")",
+      "Bash(nvm --version)",
+      "Bash(fnm --version)",
+      "Bash(where node:*)",
+      "Bash(winget --version)",
+      "Bash(winget install:*)",
+      "Bash(export PATH=\"/c/Program Files/nodejs:$PATH\")",
+      "Bash(taskkill /PID 13752 /F)",
+      "Bash(cmd //c \"taskkill /PID 13752 /F\")",
+      "Bash(npm rebuild:*)",
+      "Bash(cmd //c \"taskkill /PID 8088 /F\")",
+      "Bash(grep -E \"\\(^[^/]*$|\\\\.md$|package\\\\.json|tsconfig|jest\\\\.config|docker\\)\")",
+      "Bash(powershell.exe -Command \"Start-Process -FilePath ''cmd.exe'' -ArgumentList ''/c cd /d \"\"F:\\\\Test Practics\\\\nexus\\\\backend\"\" && npm run start:dev > C:\\\\Users\\\\Aitzaz\\\\AppData\\\\Local\\\\Temp\\\\nexus_backend.log 2>&1'' -WindowStyle Hidden\")",
+      "Bash(nslookup _mongodb._tcp.cluster0.fwphwlz.mongodb.net 8.8.8.8)",
+      "Bash(nslookup cluster0.fwphwlz.mongodb.net 8.8.8.8)",
+      "Bash(nslookup -type=SRV _mongodb._tcp.cluster0.fwphwlz.mongodb.net 8.8.8.8)",
+      "Bash(taskkill /F /IM node.exe /T)",
+      "Bash(curl -s http://localhost:3001/api/docs-json)",
+      "Bash(curl -s http://localhost:3001/auth/me)"
+    ]
+  }
+}

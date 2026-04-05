@@ -28,5 +28,5 @@ Thumbs.db
 .vscode/
 .idea/
 
-# Claude context (local only)
-.claude/context/
+# # Claude context (local only)
+# .claude/context/

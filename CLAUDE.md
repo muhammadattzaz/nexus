@@ -8,6 +8,26 @@ Monorepo with two independent workspaces:
 - `backend/` — NestJS 11 API server (port 3001)
 - `frontend/` — Next.js 16 (React 19) client (port 3000)
 
+## Environment Setup
+
+### Backend — `backend/.env` (copy from `.env.example`)
+```
+PORT=3001
+MONGODB_URI=mongodb+srv://...
+JWT_ACCESS_SECRET=...   # min 32 chars
+JWT_REFRESH_SECRET=...  # min 32 chars
+JWT_ACCESS_EXPIRES=15m
+JWT_REFRESH_EXPIRES=7d
+CORS_ORIGIN=http://localhost:3000
+NODE_ENV=development
+```
+
+### Frontend — `frontend/.env.local` (copy from `.env.example`)
+```
+NEXT_PUBLIC_API_URL=http://localhost:3001
+NEXT_PUBLIC_SOCKET_URL=http://localhost:3001
+```
+
 ## Commands
 
 ### Backend (`cd backend`)
@@ -42,10 +62,11 @@ NestJS modular architecture. Entry: `src/main.ts`. Root module: `src/app.module.
 **Modules:**
 - `auth/` — JWT + Passport authentication, bcryptjs password hashing, cookie-based tokens
 - `users/` — User management
-- `agents/` — AI agent definitions and management
+- `agents/` — AI agent definitions and management; `POST /agents/seed` seeds 6 sample agents for the authenticated user (idempotent)
 - `chat/` — Real-time messaging via Socket.io (`@nestjs/websockets`, `@nestjs/platform-socket.io`)
-- `marketplace/` — Agent marketplace
-- `discover/` — Agent/content discovery
+- `marketplace/` — AI model marketplace; auto-seeds DB on startup via `OnModuleInit` (idempotent); `POST /marketplace/seed` triggers manually
+- `discover/` — Research paper discovery; serves data from in-memory static array (no DB reads); `GET /discover?category=X` filters server-side
+- `models/` — AI model catalog; serves data from in-memory static array; `GET /models?search=&type=&provider=&tier=`; `@Public()` (no auth required)
 - `common/` — Shared guards, decorators, pipes, filters
 - `config/` — Configuration via `@nestjs/config`
 
@@ -67,6 +88,7 @@ All responses go through `TransformInterceptor`, wrapping them as:
 ```json
 { "data": <payload>, "statusCode": 200, "timestamp": "..." }
 ```
+Frontend must access `res.data.data` (not `res.data`) when reading API responses.
 
 ### Rate Limiting
 
@@ -82,6 +104,10 @@ Gateway namespace `/chat`. On connect, extracts JWT from `socket.handshake.auth.
 
 `main.ts` sets `dns.setServers(['8.8.8.8', '8.8.4.4', '1.1.1.1'])` at the very top (before all other imports) to fix `querySrv ECONNREFUSED` errors when the host's default DNS refuses SRV lookups required by `mongodb+srv://` connection strings. Do not move or remove this.
 
+### Static-Data Modules
+
+`models/` and `discover/` return data from in-memory arrays inside their service files — no DB queries on read paths. This allows them to work without DB connectivity and makes it easy to swap in third-party API calls later by replacing the array with a fetch.
+
 ## Frontend Architecture
 
 Next.js 16 App Router. Entry: `src/app/`.
@@ -95,7 +121,7 @@ Next.js 16 App Router. Entry: `src/app/`.
 - `store/` — Zustand global state
 - `lib/` — Utilities, API client (axios), socket.io-client setup
 - `types/` — Shared TypeScript types
-- `data/` — Static/seed data
+- `data/` — Static/seed data (local fallbacks while API loads)
 
 **Key libraries:** TailwindCSS v4 (PostCSS plugin), Zustand 5, TanStack React Query v5, React Hook Form + Zod v4, Socket.io-client, Radix UI, lucide-react, axios
 
@@ -120,7 +146,7 @@ Next.js 16 App Router. Entry: `src/app/`.
 
 ### API Client (`src/lib/axios.ts`)
 
-- Base URL: `process.env.NEXT_PUBLIC_API_URL` (must be set in `.env.local`, e.g. `http://localhost:3001`)
+- Base URL: `process.env.NEXT_PUBLIC_API_URL` (must be set in `.env.local`)
 - Attaches `Authorization: Bearer <accessToken>` from `authStore` on every request
 - On 401: queues in-flight requests, POSTs `/auth/refresh` (cookie carries the refresh token), retries the queue with the new token. On refresh failure: calls `clearAuth()` and redirects to `/signin`
 
@@ -132,6 +158,24 @@ URL from `NEXT_PUBLIC_SOCKET_URL`. Consumed via `useSocket()` hook. Connects onl
 
 - `src/hooks/useAuth.ts` — `useLogin`, `useRegister`, `useLogout`, `useGetMe`
 - `src/hooks/useChat.ts` — `useSessions`, `useMessages(sessionId)`, `useCreateSession`, `useSendMessage`, `useDeleteSession`
+- `src/hooks/useAgents.ts` — `useAgents`, `useCreateAgent`, `useUpdateAgent`, `useDeleteAgent`, `useSeedAgents`
+- `src/hooks/useMarketplace.ts` — `useMarketplace` (maps `MarketplaceItem` → `ModelData`), `useSeedMarketplace`
+- `src/hooks/useModels.ts` — `useModels(params?)` — model catalog with search/filter params
+- `src/hooks/useDiscover.ts` — `useDiscoverPapers(category?)` — research papers feed
+
+**`useSendMessage` signature:** takes `{ sessionId, role, content }` in the mutation payload (not as a hook parameter) so it works when creating a session and sending the first message in the same handler.
+
+### Fallback Pattern
+
+Pages use local static data while the API loads:
+```ts
+const { data: apiModels } = useMarketplace();
+const allModels = apiModels ?? MODELS; // MODELS from src/data/models.ts
+```
+
+### Marketplace Type Adapter
+
+`useMarketplace` maps backend `MarketplaceItem` (with `_id`, numeric `contextWindow`, no `emoji`) to frontend `ModelData` format. Backend types `llm/multimodal/embedding/tool` map to frontend type `language`; `image/audio/code/vision` map directly. Do not pass raw `MarketplaceItem` to `ModelCard` — use the hook.
 
 ### Styling
 
@@ -140,3 +184,7 @@ Tailwind v4 via PostCSS (`postcss.config.mjs`). Color tokens live as CSS variabl
 ### `'use client'` Requirement
 
 Any component that uses event handlers (`onClick`, `onMouseEnter`, `onChange`, etc.), React hooks, or browser APIs **must** have `'use client'` as its very first line. Server Components cannot pass event handler props — missing this directive causes a build-time error.
+
+### AppNav Positioning
+
+`AppNav` is `position: fixed; top: 0; z-50; height: h-16 (64px)`. Every page root container must have `pt-16` to avoid content being hidden under the nav.
