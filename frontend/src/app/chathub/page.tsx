@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef, Suspense } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuthStore } from '@/store/authStore';
 import { useUIStore } from '@/store/uiStore';
@@ -82,10 +82,11 @@ export default function ChatHubPage() {
 }
 
 function ChatHubInner() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const { isAuthenticated, isInitializing } = useAuthStore();
   const { addToast, openModelDetail } = useUIStore();
+  const isGuest = !isAuthenticated;
+  const [showSignInPrompt, setShowSignInPrompt] = useState(false);
 
   const { data: apiModels, isLoading: modelsLoading } = useModels();
   const models = apiModels ?? MODELS;
@@ -121,14 +122,10 @@ function ChatHubInner() {
   }, [searchParams]);
 
   useEffect(() => {
-    if (!isInitializing && !isAuthenticated) router.push('/signin');
-  }, [isInitializing, isAuthenticated, router]);
-
-  useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [apiMessages, isTyping]);
 
-  if (isInitializing || !isAuthenticated) return null;
+  if (isInitializing) return null;
 
   const activeModel = models.find((m) => m.id === activeModelId) ?? models[0] ?? MODELS[0];
 
@@ -139,6 +136,10 @@ function ChatHubInner() {
   );
 
   const handleSend = async (text: string, attachments?: File[], agentId?: string) => {
+    if (isGuest) {
+      setShowSignInPrompt(true);
+      return;
+    }
     const msgContent = text + (attachments?.length ? ` [+${attachments.length} file(s)]` : '');
     setIsTyping(true);
 
@@ -213,7 +214,7 @@ function ChatHubInner() {
             <>
               <div className="px-3 pt-3 pb-2 shrink-0">
                 <button
-                  onClick={() => setActiveSessionId(null)}
+                  onClick={() => isGuest ? setShowSignInPrompt(true) : setActiveSessionId(null)}
                   className="w-full flex items-center justify-center gap-2 py-2 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90"
                   style={{ background: 'var(--accent)' }}
                 >
@@ -221,7 +222,27 @@ function ChatHubInner() {
                 </button>
               </div>
               <div className="flex-1 overflow-y-auto">
-                {sessions.length === 0 ? (
+                {isGuest ? (
+                  <div className="flex flex-col items-center justify-center px-4 py-8 text-center">
+                    <div
+                      className="w-10 h-10 rounded-full flex items-center justify-center mb-3 text-lg"
+                      style={{ background: 'var(--bg2)' }}
+                    >🔒</div>
+                    <p className="text-xs font-semibold mb-1" style={{ color: 'var(--text)' }}>
+                      Sign in to save chats
+                    </p>
+                    <p className="text-xs mb-4 leading-relaxed" style={{ color: 'var(--text3)' }}>
+                      Your conversations will be saved and synced across devices
+                    </p>
+                    <Link
+                      href="/signin"
+                      className="px-4 py-1.5 rounded-xl text-xs font-semibold text-white"
+                      style={{ background: 'var(--accent)' }}
+                    >
+                      Sign in
+                    </Link>
+                  </div>
+                ) : sessions.length === 0 ? (
                   <p className="px-4 py-6 text-xs text-center" style={{ color: 'var(--text3)' }}>
                     No sessions yet. Start a new chat!
                   </p>
@@ -431,6 +452,33 @@ function ChatHubInner() {
             className="px-4 pt-3 pb-3 border-t shrink-0"
             style={{ borderColor: 'var(--border)', background: '#fff' }}
           >
+            {/* Guest banner */}
+            {isGuest && (
+              <div
+                className="mb-2 px-3 py-2 rounded-xl border flex items-center justify-between gap-3"
+                style={{ background: 'var(--accent-lt)', borderColor: 'var(--accent-border)' }}
+              >
+                <p className="text-xs" style={{ color: 'var(--text)' }}>
+                  ✨ <strong>Try it out!</strong> Sign in to save your chats and unlock full access.
+                </p>
+                <div className="flex items-center gap-2 shrink-0">
+                  <Link
+                    href="/signin"
+                    className="px-2.5 py-1 rounded-lg text-xs font-medium border"
+                    style={{ color: 'var(--text)', borderColor: 'var(--border2)' }}
+                  >
+                    Sign in
+                  </Link>
+                  <Link
+                    href="/signup"
+                    className="px-2.5 py-1 rounded-lg text-xs font-semibold text-white"
+                    style={{ background: 'var(--accent)' }}
+                  >
+                    Sign up free
+                  </Link>
+                </div>
+              </div>
+            )}
             {/* Input box */}
             <ChatInputBar
               value={inputText}
@@ -617,6 +665,57 @@ function ChatHubInner() {
       </div>
 
       <ModelDetailModal />
+
+      {/* ── Sign-in prompt modal (guests) ────────────────────────────────── */}
+      {showSignInPrompt && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40"
+          onClick={() => setShowSignInPrompt(false)}
+        >
+          <div
+            className="bg-white rounded-2xl p-8 max-w-sm w-full mx-4 text-center shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl"
+              style={{ background: 'var(--accent-lt)' }}
+              aria-hidden="true"
+            >✦</div>
+            <h3
+              className="text-xl font-bold mb-2"
+              style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}
+            >
+              Sign in to chat
+            </h3>
+            <p className="text-sm mb-6" style={{ color: 'var(--text2)' }}>
+              Create a free account to start chatting, save your history, and unlock all features.
+            </p>
+            <div className="flex flex-col gap-2">
+              <Link
+                href="/signup"
+                className="py-2.5 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90"
+                style={{ background: 'var(--accent)' }}
+              >
+                Create free account →
+              </Link>
+              <Link
+                href="/signin"
+                className="py-2.5 rounded-xl text-sm font-medium border"
+                style={{ color: 'var(--text)', borderColor: 'var(--border2)' }}
+              >
+                Sign in
+              </Link>
+            </div>
+            <button
+              onClick={() => setShowSignInPrompt(false)}
+              className="mt-4 text-xs"
+              style={{ color: 'var(--text3)' }}
+            >
+              Maybe later
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

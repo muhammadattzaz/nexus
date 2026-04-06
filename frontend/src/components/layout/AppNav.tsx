@@ -1,11 +1,18 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/cn';
 import { useAuthStore } from '@/store/authStore';
 import { useLogout } from '@/hooks/useAuth';
-import UserProfileModal from '@/components/ui/UserProfileModal';
+import { useUIStore, type ThemeName } from '@/store/uiStore';
+
+const PALETTE: { id: ThemeName; color: string; label: string }[] = [
+  { id: 'orange', color: '#C8622A', label: 'Ember' },
+  { id: 'teal',   color: '#39bca9', label: 'Teal' },
+  { id: 'purple', color: '#7c3aed', label: 'Violet' },
+];
 
 const TABS = [
   { label: '💬 Chat Hub', href: '/chathub' },
@@ -18,8 +25,10 @@ export default function AppNav() {
   const pathname = usePathname();
   const { user, isAuthenticated } = useAuthStore();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [profileOpen, setProfileOpen] = useState(false);
   const logout = useLogout();
+  const router = useRouter();
+
+  const { theme, setTheme } = useUIStore();
 
   const initials = user?.fullName
     ? user.fullName.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)
@@ -35,10 +44,10 @@ export default function AppNav() {
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2 flex-shrink-0" aria-label="NexusAI home">
             <svg width="24" height="24" viewBox="0 0 28 28" fill="none">
-              <polygon points="14,2 26,14 14,18" fill="#C8622A" />
-              <polygon points="14,2 2,14 14,18" fill="#A34D1E" />
-              <polygon points="14,18 26,14 14,26" fill="#FDF1EB" stroke="#C8622A" strokeWidth="0.5" />
-              <polygon points="14,18 2,14 14,26" fill="#F4E4D8" stroke="#C8622A" strokeWidth="0.5" />
+              <polygon points="14,2 26,14 14,18" fill="var(--accent)" />
+              <polygon points="14,2 2,14 14,18" fill="var(--accent2)" />
+              <polygon points="14,18 26,14 14,26" fill="var(--accent-lt)" stroke="var(--accent)" strokeWidth="0.5" />
+              <polygon points="14,18 2,14 14,26" fill="var(--accent-lt)" stroke="var(--accent2)" strokeWidth="0.5" />
             </svg>
             <span className="text-lg font-bold" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>
               NexusAI
@@ -73,6 +82,29 @@ export default function AppNav() {
 
           {/* Right side */}
           <div className="flex items-center gap-3">
+            {/* Theme palette */}
+            <div
+              className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border"
+              style={{ borderColor: 'var(--border)' }}
+              role="group"
+              aria-label="Choose accent colour"
+            >
+              {PALETTE.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => setTheme(p.id)}
+                  title={p.label}
+                  aria-label={`${p.label} theme${theme === p.id ? ' (active)' : ''}`}
+                  className="w-4 h-4 rounded-full transition-all duration-150"
+                  style={{
+                    background: p.color,
+                    outline: theme === p.id ? `2px solid ${p.color}` : '2px solid transparent',
+                    outlineOffset: '2px',
+                    transform: theme === p.id ? 'scale(1.25)' : 'scale(1)',
+                  }}
+                />
+              ))}
+            </div>
             {isAuthenticated && user ? (
               <div className="relative">
                 <button
@@ -112,7 +144,7 @@ export default function AppNav() {
                     </div>
 
                     <button
-                      onClick={() => { setProfileOpen(true); setUserMenuOpen(false); }}
+                      onClick={() => { router.push('/profile'); setUserMenuOpen(false); }}
                       className="w-full text-left px-4 py-2.5 text-sm flex items-center gap-2 hover:bg-[#F4F2EE] transition-colors"
                       style={{ color: 'var(--text)' }}
                     >
@@ -153,7 +185,6 @@ export default function AppNav() {
         </div>
       </header>
 
-      <UserProfileModal open={profileOpen} onClose={() => setProfileOpen(false)} />
     </>
   );
 }

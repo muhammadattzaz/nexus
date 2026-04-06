@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useLogin, useRegister } from '@/hooks/useAuth';
 import { useUIStore } from '@/store/uiStore';
 
@@ -26,7 +27,7 @@ function AuthPage({
         style={{ background: 'linear-gradient(135deg, #1C1A16 0%, #2D2A24 100%)' }}
       >
         {/* Logo */}
-        <div className="flex items-center gap-2">
+        <Link href="/" className="flex items-center gap-2" aria-label="NexusAI home">
           <svg width="32" height="32" viewBox="0 0 28 28" fill="none" aria-hidden="true">
             <polygon points="14,2 26,14 14,26 2,14" fill="#C8622A" />
             <polygon points="14,2 26,14 14,14" fill="#A34D1E" opacity="0.5" />
@@ -34,7 +35,7 @@ function AuthPage({
           <span className="text-white text-xl font-bold" style={{ fontFamily: 'Syne, sans-serif' }}>
             NexusAI
           </span>
-        </div>
+        </Link>
 
         <div>
           <h1

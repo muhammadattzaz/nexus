@@ -1,14 +1,17 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/axios';
 import { ChatSession, Message } from '@/types';
+import { useAuthStore } from '@/store/authStore';
 
 export function useSessions() {
+  const { isAuthenticated } = useAuthStore();
   return useQuery<ChatSession[]>({
     queryKey: ['chat', 'sessions'],
     queryFn: async () => {
       const res = await api.get('/chat/sessions');
       return res.data.data as ChatSession[];
     },
+    enabled: isAuthenticated,
   });
 }
 

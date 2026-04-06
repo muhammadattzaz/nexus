@@ -32,6 +32,12 @@ api.interceptors.response.use(
     const originalRequest = error.config as typeof error.config & { _retry?: boolean };
 
     if (error.response?.status === 401 && !originalRequest._retry) {
+      // Don't intercept failures from the refresh endpoint itself —
+      // let the caller (AuthInit) handle them gracefully.
+      if (originalRequest.url?.includes('/auth/refresh')) {
+        return Promise.reject(error);
+      }
+
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject });

@@ -3,6 +3,13 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/cn';
+import { useUIStore, type ThemeName } from '@/store/uiStore';
+
+const PALETTE: { id: ThemeName; color: string; label: string }[] = [
+  { id: 'orange', color: '#C8622A', label: 'Ember' },
+  { id: 'teal',   color: '#39bca9', label: 'Teal' },
+  { id: 'purple', color: '#7c3aed', label: 'Violet' },
+];
 
 const LANGUAGES = [
   { code: 'en', label: 'English' },
@@ -35,6 +42,7 @@ export default function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [selectedLang, setSelectedLang] = useState('EN');
   const router = useRouter();
+  const { theme, setTheme } = useUIStore();
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 10);
@@ -60,10 +68,10 @@ export default function Navbar() {
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2 flex-shrink-0" aria-label="NexusAI home">
           <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
-            <polygon points="14,2 26,14 14,18" fill="#C8622A" />
-            <polygon points="14,2 2,14 14,18" fill="#A34D1E" />
-            <polygon points="14,18 26,14 14,26" fill="#FDF1EB" stroke="#C8622A" strokeWidth="0.5" />
-            <polygon points="14,18 2,14 14,26" fill="#F4E4D8" stroke="#C8622A" strokeWidth="0.5" />
+            <polygon points="14,2 26,14 14,18" fill="var(--accent)" />
+            <polygon points="14,2 2,14 14,18" fill="var(--accent2)" />
+            <polygon points="14,18 26,14 14,26" fill="var(--accent-lt)" stroke="var(--accent)" strokeWidth="0.5" />
+            <polygon points="14,18 2,14 14,26" fill="var(--accent-lt)" stroke="var(--accent2)" strokeWidth="0.5" />
           </svg>
           <span
             className="text-xl font-bold"
@@ -124,6 +132,38 @@ export default function Navbar() {
             )}
           </div>
 
+          {/* Theme switcher */}
+          <div
+            className="flex items-center gap-1 p-1 rounded-xl border"
+            style={{ borderColor: 'var(--border2)', background: 'var(--bg2)' }}
+            role="group"
+            aria-label="Choose theme colour"
+          >
+            {PALETTE.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => setTheme(p.id)}
+                title={p.label}
+                aria-label={`${p.label} theme${theme === p.id ? ' (active)' : ''}`}
+                className="relative w-5 h-5 rounded-full transition-all duration-200 group"
+                style={{
+                  background: p.color,
+                  outline: theme === p.id ? `2px solid ${p.color}` : '2px solid transparent',
+                  outlineOffset: '2px',
+                  transform: theme === p.id ? 'scale(1.3)' : 'scale(1)',
+                }}
+              >
+                {/* Tooltip */}
+                <span
+                  className="pointer-events-none absolute -bottom-7 left-1/2 -translate-x-1/2 text-xs font-medium px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap"
+                  style={{ background: 'var(--text)', color: '#fff' }}
+                >
+                  {p.label}
+                </span>
+              </button>
+            ))}
+          </div>
+
           <Link
             href="/signin"
             className="px-4 py-2 rounded-xl text-sm font-medium border transition-colors hover:bg-[#ECEAE4]"
@@ -172,6 +212,29 @@ export default function Navbar() {
               {link.label}
             </Link>
           ))}
+          {/* Mobile theme switcher */}
+          <div className="flex items-center gap-3 py-1">
+            <span className="text-xs font-medium" style={{ color: 'var(--text3)' }}>Theme</span>
+            <div className="flex items-center gap-2">
+              {PALETTE.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => setTheme(p.id)}
+                  aria-label={p.label}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-medium transition-all"
+                  style={{
+                    borderColor: theme === p.id ? p.color : 'var(--border)',
+                    color: theme === p.id ? p.color : 'var(--text2)',
+                    background: theme === p.id ? `${p.color}15` : 'transparent',
+                  }}
+                >
+                  <span className="w-3 h-3 rounded-full shrink-0" style={{ background: p.color }} />
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="flex gap-2 pt-2">
             <Link href="/signin" className="flex-1 py-2 text-center text-sm font-medium border rounded-xl" style={{ borderColor: 'var(--border2)', color: 'var(--text)' }}>Sign in</Link>
             <Link href="/signup" className="flex-1 py-2 text-center text-sm font-semibold text-white rounded-xl" style={{ background: 'var(--accent)' }}>Get Started →</Link>
