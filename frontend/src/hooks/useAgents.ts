@@ -8,6 +8,7 @@ export interface CreateAgentPayload {
   type: string;
   systemPrompt?: string;
   tools?: string[];
+  toolConfigs?: Record<string, Record<string, string>>;
   memory?: { shortTerm: boolean; longTerm: boolean };
   model?: string;
   tone?: string;

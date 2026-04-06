@@ -39,6 +39,11 @@ export class CreateAgentDto {
   @IsString({ each: true })
   tools?: string[];
 
+  @ApiProperty({ example: { 'web-search': { 'API Key': 'sk-...' } }, description: 'Tool configuration values', required: false })
+  @IsOptional()
+  @IsObject()
+  toolConfigs?: Record<string, Record<string, string>>;
+
   @ApiProperty({ example: { shortTerm: true, longTerm: false }, description: 'Memory settings', required: false })
   @IsOptional()
   @IsObject()

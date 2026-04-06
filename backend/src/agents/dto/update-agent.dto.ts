@@ -39,6 +39,11 @@ export class UpdateAgentDto {
   @IsString({ each: true })
   tools?: string[];
 
+  @ApiProperty({ example: { 'web-search': { 'API Key': 'sk-...' } }, description: 'Tool configuration values', required: false })
+  @IsOptional()
+  @IsObject()
+  toolConfigs?: Record<string, Record<string, string>>;
+
   @ApiProperty({ example: { shortTerm: true, longTerm: true }, description: 'Memory settings', required: false })
   @IsOptional()
   @IsObject()

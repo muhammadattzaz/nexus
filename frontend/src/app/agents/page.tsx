@@ -270,6 +270,7 @@ export default function AgentsPage() {
   const [agentPrompt, setAgentPrompt] = useState('');
   const [lastGenPrompt, setLastGenPrompt] = useState('');
   const [selectedTools, setSelectedTools] = useState<string[]>([]);
+  const [toolConfigs, setToolConfigs] = useState<Record<string, Record<string, string>>>({});
   const [toolFilter, setToolFilter] = useState<'All' | 'Connected' | 'Available' | 'Suggested'>('All');
   const [drawerTool, setDrawerTool] = useState<string | null>(null);
   const [drawerTab, setDrawerTab] = useState<'Overview' | 'Steps' | 'Config'>('Overview');
@@ -278,6 +279,11 @@ export default function AgentsPage() {
   const [testInput, setTestInput] = useState('');
   const [testResponse, setTestResponse] = useState('');
   const [isTesting, setIsTesting] = useState(false);
+
+  // Sidebar tasks
+  const [customTasks, setCustomTasks] = useState<{ id: string; label: string; done: boolean }[]>([]);
+  const [showNewTask, setShowNewTask] = useState(false);
+  const [newTaskInput, setNewTaskInput] = useState('');
 
   useEffect(() => {
     if (!isAuthenticated) router.push('/signin');
@@ -299,7 +305,7 @@ export default function AgentsPage() {
     setAgentName(''); setAgentKind(''); setMainJob('');
     setAgentAudience(''); setAgentStyle(''); setPrefModel('');
     setAgentVolume(''); setAgentPrompt(''); setLastGenPrompt('');
-    setSelectedTools([]); setToolFilter('All'); setDrawerTool(null); setDrawerTab('Overview');
+    setSelectedTools([]); setToolConfigs({}); setToolFilter('All'); setDrawerTool(null); setDrawerTab('Overview');
     setShortTermMem(true); setLongTermMem(false);
     setTestInput(''); setTestResponse('');
   };
@@ -337,6 +343,7 @@ export default function AgentsPage() {
         type: typeKey,
         systemPrompt: agentPrompt,
         tools: selectedTools,
+        toolConfigs,
         memory: { shortTerm: shortTermMem, longTerm: longTermMem },
         model: prefModel === 'Auto-select' || !prefModel ? 'GPT-4o' : prefModel,
         tone: agentStyle,
@@ -381,67 +388,212 @@ export default function AgentsPage() {
     setIsTyping(false);
   };
 
-  // Sidebar task list derived from agents
-  const sidebarTasks = userAgents.length > 0
-    ? userAgents.slice(0, 3).map((a) => ({ label: a.name, done: a.status === 'deployed' }))
+  // Sidebar task list: agent-derived defaults + custom user tasks
+  const agentTasks = userAgents.length > 0
+    ? userAgents.slice(0, 3).map((a) => ({ id: `agent-${a._id}`, label: a.name, done: a.status === 'deployed', fixed: true }))
     : [
-      { label: 'Create your first agent', done: false },
-      { label: 'Configure tool integrations', done: false },
-      { label: 'Set up knowledge base', done: false },
+      { id: 'default-1', label: 'Create your first agent', done: false, fixed: true },
+      { id: 'default-2', label: 'Configure tool integrations', done: false, fixed: true },
+      { id: 'default-3', label: 'Set up knowledge base', done: false, fixed: true },
     ];
+  const allTasks = [...agentTasks, ...customTasks.map((t) => ({ ...t, fixed: false }))];
+
+  const handleAddTask = () => {
+    const label = newTaskInput.trim();
+    if (!label) return;
+    setCustomTasks((prev) => [...prev, { id: Date.now().toString(), label, done: false }]);
+    setNewTaskInput('');
+    setShowNewTask(false);
+  };
+
+  const handleToggleTask = (id: string) => {
+    setCustomTasks((prev) => prev.map((t) => t.id === id ? { ...t, done: !t.done } : t));
+  };
+
+  const handleDeleteTask = (id: string) => {
+    setCustomTasks((prev) => prev.filter((t) => t.id !== id));
+  };
 
   // ─── Chat View ───────────────────────────────────────────────────────────
   if (chatAgent) {
+    const STARTER_PROMPTS: Record<string, string[]> = {
+      'customer-support': ['How do I reset my password?', 'I have an issue with my order', 'Can you help me with a refund?'],
+      'research': ['Summarise the latest AI research trends', 'Find me papers on large language models', 'What are the key insights on climate change?'],
+      'code-review': ['Review this Python function for bugs', 'Suggest improvements for my API design', 'Help me debug this TypeScript error'],
+      'content-writing': ['Write a blog post intro about AI', 'Create social media captions for a product launch', 'Improve the tone of this email'],
+      'email-outreach': ['Draft a cold outreach email for SaaS', 'Write a follow-up email after a demo', 'Create a re-engagement campaign'],
+      'analytics': ['Analyse my sales data trends', 'Generate a weekly KPI summary', 'Identify anomalies in this dataset'],
+      'education': ['Explain machine learning in simple terms', 'Create a quiz on React fundamentals', 'Summarise this research paper'],
+      'ecommerce': ['Help me write a product description', 'Suggest upsell strategies for my store', 'Draft a cart abandonment email'],
+    };
+    const starters = STARTER_PROMPTS[chatAgent.type] ?? ['What can you help me with today?', 'Tell me about your capabilities', 'Get started with a task'];
+
     return (
-      <div className="flex flex-col h-screen pt-16" style={{ background: 'var(--bg)' }}>
+      <div className="flex flex-col h-screen pt-16" style={{ background: '#f8f7f5' }}>
         <AppNav />
-        <div className="flex items-center gap-3 px-4 py-3 border-b" style={{ background: '#fff', borderColor: 'var(--border)' }}>
-          <button onClick={() => { setChatAgent(null); setMessages([]); }} aria-label="Back to agents"
-            className="p-1.5 rounded-lg hover:bg-gray-100 text-sm" style={{ color: 'var(--text2)' }}>
+
+        {/* ── Chat header ── */}
+        <div
+          className="flex items-center gap-3 px-5 py-3 border-b"
+          style={{ background: '#fff', borderColor: 'var(--border)' }}
+        >
+          <button
+            onClick={() => { setChatAgent(null); setMessages([]); }}
+            aria-label="Back to agents"
+            className="flex items-center gap-1.5 text-sm font-medium px-2 py-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+            style={{ color: 'var(--text2)' }}
+          >
             ← Back
           </button>
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center text-xl"
-            style={{ background: agentBg(chatAgent.type) }} aria-hidden="true">
+
+          <div className="w-px h-5 mx-1" style={{ background: 'var(--border)' }} />
+
+          <div
+            className="w-9 h-9 rounded-xl flex items-center justify-center text-xl shrink-0"
+            style={{ background: agentBg(chatAgent.type) }}
+            aria-hidden="true"
+          >
             {agentEmoji(chatAgent.type)}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="font-bold text-sm" style={{ color: 'var(--text)' }}>{chatAgent.name}</p>
-            <p className="text-xs" style={{ color: 'var(--text2)' }}>{chatAgent.model || chatAgent.type}</p>
+            <p className="font-bold text-sm leading-tight" style={{ color: 'var(--text)' }}>{chatAgent.name}</p>
+            <p className="text-xs leading-tight" style={{ color: 'var(--text2)' }}>{chatAgent.model || chatAgent.type}</p>
           </div>
-          <LiveBadge label="Live" color="teal" />
-          <button onClick={() => addToast('⚙️ Settings coming soon!', 'info')} className="btn-ghost text-xs px-2.5 py-1.5">⚙️ Settings</button>
-          <button onClick={() => addToast('📊 Monitor view coming soon!', 'info')} className="btn-ghost text-xs px-2.5 py-1.5">📊 Monitor</button>
+
+          <div className="flex items-center gap-2 ml-auto">
+            <LiveBadge label="Live" color="teal" />
+            <button
+              onClick={() => addToast('⚙️ Settings coming soon!', 'info')}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-medium transition-colors hover:bg-gray-50"
+              style={{ borderColor: 'var(--border)', color: 'var(--text2)' }}
+            >
+              ⚙️ Settings
+            </button>
+            <button
+              onClick={() => addToast('📊 Monitor view coming soon!', 'info')}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-medium transition-colors hover:bg-gray-50"
+              style={{ borderColor: 'var(--border)', color: 'var(--text2)' }}
+            >
+              📊 Monitor
+            </button>
+          </div>
         </div>
-        <div className="flex-1 overflow-y-auto p-4">
-          {messages.length === 0 && (
-            <div className="text-center py-8" style={{ color: 'var(--text2)' }}>
-              <p className="text-2xl mb-2" aria-hidden="true">{agentEmoji(chatAgent.type)}</p>
-              <p className="font-semibold">{chatAgent.name} is ready.</p>
-              <p className="text-sm">{chatAgent.description}</p>
+
+        {/* ── Messages area ── */}
+        <div className="flex-1 overflow-y-auto">
+          {messages.length === 0 ? (
+            /* ── Empty / welcome state ── */
+            <div className="flex flex-col items-center justify-center h-full gap-8 px-4 py-12">
+              {/* Decorative rings + icon */}
+              <div className="relative flex items-center justify-center">
+                {/* Outer ring */}
+                <div
+                  className="absolute w-36 h-36 rounded-full border-2 opacity-10"
+                  style={{ borderColor: agentBg(chatAgent.type).replace('var(', '').replace(')', '') }}
+                />
+                {/* Middle ring */}
+                <div
+                  className="absolute w-24 h-24 rounded-full border-2 opacity-20"
+                  style={{ borderColor: 'var(--accent)' }}
+                />
+                {/* Icon circle */}
+                <div
+                  className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl shadow-md"
+                  style={{ background: agentBg(chatAgent.type) }}
+                  aria-hidden="true"
+                >
+                  {agentEmoji(chatAgent.type)}
+                </div>
+              </div>
+
+              {/* Name + description */}
+              <div className="text-center max-w-sm">
+                <h2 className="text-2xl font-bold mb-2" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>
+                  {chatAgent.name} is ready.
+                </h2>
+                {chatAgent.description && (
+                  <p className="text-sm leading-relaxed" style={{ color: 'var(--text2)' }}>
+                    {chatAgent.description}
+                  </p>
+                )}
+              </div>
+
+              {/* Starter prompts */}
+              <div className="flex flex-col gap-2 w-full max-w-md">
+                <p className="text-xs font-semibold text-center mb-1" style={{ color: 'var(--text3)' }}>
+                  TRY ASKING
+                </p>
+                {starters.map((prompt) => (
+                  <button
+                    key={prompt}
+                    onClick={() => {
+                      setChatInputText(prompt);
+                      handleChatSend(prompt);
+                      setChatInputText('');
+                    }}
+                    className="w-full text-left px-4 py-3 rounded-2xl border text-sm transition-all hover:shadow-sm hover:-translate-y-px"
+                    style={{ background: '#fff', borderColor: 'var(--border)', color: 'var(--text2)' }}
+                  >
+                    {prompt}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            /* ── Message list ── */
+            <div className="max-w-3xl mx-auto px-4 py-6 space-y-1">
+              {messages.map((msg) => (
+                <ChatMessage key={msg.id} role={msg.role} content={msg.content} timestamp={msg.timestamp} />
+              ))}
+              {isTyping && (
+                <div className="flex items-end gap-2 pt-2">
+                  <div
+                    className="w-8 h-8 rounded-xl flex items-center justify-center text-lg shrink-0"
+                    style={{ background: agentBg(chatAgent.type) }}
+                    aria-hidden="true"
+                  >
+                    {agentEmoji(chatAgent.type)}
+                  </div>
+                  <div
+                    className="px-4 py-3 rounded-2xl rounded-bl-sm text-sm flex gap-1"
+                    style={{ background: '#fff', border: '1px solid var(--border)' }}
+                    aria-label="Agent is typing"
+                  >
+                    <span className="animate-bounce" style={{ animationDelay: '0ms' }}>●</span>
+                    <span className="animate-bounce" style={{ animationDelay: '150ms' }}>●</span>
+                    <span className="animate-bounce" style={{ animationDelay: '300ms' }}>●</span>
+                  </div>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
             </div>
           )}
-          {messages.map((msg) => (
-            <ChatMessage key={msg.id} role={msg.role} content={msg.content} timestamp={msg.timestamp} />
-          ))}
-          {isTyping && (
-            <div className="flex items-center gap-2 mb-4">
-              <div className="w-8 h-8 rounded-xl flex items-center justify-center text-lg" style={{ background: agentBg(chatAgent.type) }} aria-hidden="true">{agentEmoji(chatAgent.type)}</div>
-              <div className="px-4 py-3 rounded-2xl text-sm" style={{ background: '#fff', border: '1px solid var(--border)' }} aria-label="Agent is typing"><span className="animate-pulse">●●●</span></div>
-            </div>
-          )}
-          <div ref={messagesEndRef} />
         </div>
-        <div className="p-4 border-t" style={{ borderColor: 'var(--border)' }}>
-          <ChatInputBar
-            value={chatInputText} onChange={setChatInputText}
-            files={chatInputFiles} onFilesChange={setChatInputFiles}
-            onSend={(text) => { handleChatSend(text); setChatInputText(''); setChatInputFiles([]); }}
-            placeholder={`Message ${chatAgent.name}…`}
-            disabled={isTyping}
-          />
-          <p className="text-center text-xs mt-2" style={{ color: 'var(--text3)' }}>
-            Live preview · <button className="underline" style={{ color: 'var(--accent)' }} onClick={() => addToast('✏️ Editor coming soon!', 'info')}>Edit configuration →</button>
-          </p>
+
+        {/* ── Input area ── */}
+        <div
+          className="px-4 py-4 border-t"
+          style={{ background: '#fff', borderColor: 'var(--border)' }}
+        >
+          <div className="max-w-3xl mx-auto">
+            <ChatInputBar
+              value={chatInputText} onChange={setChatInputText}
+              files={chatInputFiles} onFilesChange={setChatInputFiles}
+              onSend={(text) => { handleChatSend(text); setChatInputText(''); setChatInputFiles([]); }}
+              placeholder={`Message ${chatAgent.name}…`}
+              disabled={isTyping}
+            />
+            <p className="text-center text-xs mt-2" style={{ color: 'var(--text3)' }}>
+              Live preview ·{' '}
+              <button
+                className="underline transition-colors hover:opacity-70"
+                style={{ color: 'var(--accent)' }}
+                onClick={() => addToast('✏️ Editor coming soon!', 'info')}
+              >
+                Edit configuration →
+              </button>
+            </p>
+          </div>
         </div>
       </div>
     );
@@ -490,25 +642,77 @@ export default function AgentsPage() {
             <div>
               <div className="flex items-center justify-between mb-2">
                 <p className="text-xs font-semibold" style={{ color: 'var(--text2)' }}>Tasks</p>
-                <button className="text-xs font-medium" style={{ color: 'var(--accent)' }}
-                  onClick={() => addToast('📝 Task manager coming soon!', 'info')}>
+                <button
+                  className="text-xs font-medium"
+                  style={{ color: 'var(--accent)' }}
+                  onClick={() => { setShowNewTask(true); setNewTaskInput(''); }}
+                >
                   + New Task
                 </button>
               </div>
+
+              {/* Inline new-task input */}
+              {showNewTask && (
+                <div className="flex items-center gap-1.5 mb-2">
+                  <input
+                    autoFocus
+                    type="text"
+                    value={newTaskInput}
+                    onChange={(e) => setNewTaskInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleAddTask();
+                      if (e.key === 'Escape') { setShowNewTask(false); setNewTaskInput(''); }
+                    }}
+                    placeholder="Task name…"
+                    className="flex-1 px-2 py-1 rounded-lg border text-xs focus:outline-none"
+                    style={{ borderColor: 'var(--accent)', color: 'var(--text)' }}
+                  />
+                  <button
+                    onClick={handleAddTask}
+                    disabled={!newTaskInput.trim()}
+                    className="w-6 h-6 rounded-md flex items-center justify-center text-xs font-bold disabled:opacity-40"
+                    style={{ background: 'var(--accent)', color: '#fff' }}
+                    aria-label="Add task"
+                  >✓</button>
+                  <button
+                    onClick={() => { setShowNewTask(false); setNewTaskInput(''); }}
+                    className="w-6 h-6 rounded-md flex items-center justify-center text-xs"
+                    style={{ background: 'var(--bg2)', color: 'var(--text2)' }}
+                    aria-label="Cancel"
+                  >✕</button>
+                </div>
+              )}
+
               <ul className="space-y-1.5">
-                {sidebarTasks.map((task, i) => (
-                  <li key={i} className="flex items-center gap-2 text-xs" style={{ color: task.done ? 'var(--teal)' : 'var(--text2)' }}>
-                    <span
-                      className="w-4 h-4 rounded shrink-0 flex items-center justify-center text-xs"
+                {allTasks.map((task) => (
+                  <li
+                    key={task.id}
+                    className="group flex items-center gap-2 text-xs"
+                    style={{ color: task.done ? 'var(--teal)' : 'var(--text2)' }}
+                  >
+                    <button
+                      onClick={() => !task.fixed && handleToggleTask(task.id)}
+                      className="w-4 h-4 rounded shrink-0 flex items-center justify-center text-xs transition-colors"
                       style={{
                         border: task.done ? 'none' : '1.5px solid var(--border2)',
                         background: task.done ? 'var(--teal-lt)' : 'transparent',
+                        cursor: task.fixed ? 'default' : 'pointer',
                       }}
-                      aria-hidden="true"
+                      aria-label={task.done ? 'Mark incomplete' : 'Mark complete'}
                     >
                       {task.done ? '✓' : ''}
+                    </button>
+                    <span className="flex-1 truncate" style={{ textDecoration: task.done ? 'line-through' : 'none' }}>
+                      {task.label}
                     </span>
-                    <span className="truncate">{task.label}</span>
+                    {!task.fixed && (
+                      <button
+                        onClick={() => handleDeleteTask(task.id)}
+                        className="opacity-0 group-hover:opacity-100 transition-opacity text-xs leading-none"
+                        style={{ color: 'var(--rose)' }}
+                        aria-label={`Delete task ${task.label}`}
+                      >✕</button>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -518,46 +722,61 @@ export default function AgentsPage() {
 
         {/* ── Main Content ─────────────────────────────────────────────── */}
         <main className="flex-1 min-w-0">
-          <div className="flex items-center justify-between mb-6">
-            <h1 className="text-xl font-bold" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>
-              Your Agents
-            </h1>
-            <button onClick={openWizard} className="btn-primary text-sm lg:hidden">+ New Agent</button>
+          {/* Header */}
+          <div className="flex items-start justify-between mb-6 gap-4">
+            <div>
+              <h1 className="text-xl font-bold" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>
+                Agent Library
+              </h1>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--text2)' }}>
+                Choose a{' '}
+                <button onClick={openWizard} className="underline" style={{ color: 'var(--accent)' }}>default agent</button>
+                {' '}or{' '}
+                <button onClick={openWizard} className="underline" style={{ color: 'var(--accent)' }}>build your own</button>
+              </p>
+            </div>
+            <button
+              onClick={openWizard}
+              className="shrink-0 px-4 py-2 rounded-xl text-sm font-semibold"
+              style={{ background: 'var(--text)', color: '#fff' }}
+            >
+              Default Agents
+            </button>
           </div>
 
           {agentsLoading && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="rounded-xl border h-48 animate-pulse" style={{ background: 'var(--bg2)', borderColor: 'var(--border)' }} />
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="rounded-2xl border h-52 animate-pulse" style={{ background: 'var(--bg2)', borderColor: 'var(--border)' }} />
               ))}
             </div>
           )}
 
           {!agentsLoading && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
               {userAgents.map((agent) => (
                 <AgentCard
                   key={agent._id}
                   agent={agent}
-                  onChat={() => { setChatAgent(agent); setMessages([]); }}
-                  onEdit={() => addToast('✏️ Agent editor coming soon!', 'info')}
-                  onDeploy={() => addToast(`🚀 ${agent.name} re-deployed!`, 'success')}
+                  onClick={() => { setChatAgent(agent); setMessages([]); }}
                   onDelete={() => handleDeleteAgent(agent._id, agent.name)}
                 />
               ))}
 
-              {/* Create from scratch */}
+              {/* Build from Scratch */}
               <button
                 onClick={openWizard}
-                className="rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-2 py-8 transition-all hover:shadow-sm"
-                style={{ borderColor: 'var(--border2)', color: 'var(--text2)' }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--accent)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--accent)'; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border2)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--text2)'; }}
+                className="rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-2 p-6 min-h-[200px] transition-colors hover:border-gray-400"
+                style={{ borderColor: '#d1d5db', background: 'transparent' }}
               >
-                <span className="text-3xl" aria-hidden="true">➕</span>
-                <span className="text-sm font-semibold">Build from scratch</span>
-                <span className="text-xs text-center px-4 leading-relaxed" style={{ color: 'var(--text3)' }}>
-                  Pick any model, define purpose & tools
+                <div
+                  className="w-10 h-10 rounded-full flex items-center justify-center text-xl mb-1"
+                  style={{ background: 'var(--bg2)', color: 'var(--text3)' }}
+                  aria-hidden="true"
+                >+</div>
+                <span className="text-sm font-semibold" style={{ color: 'var(--text)' }}>Build from Scratch</span>
+                <span className="text-xs text-center leading-relaxed" style={{ color: 'var(--text3)' }}>
+                  Create a fully custom agent
                 </span>
               </button>
             </div>
@@ -604,6 +823,7 @@ export default function AgentsPage() {
           {/* Right-side tool drawer — z-60 so it sits above the modal */}
           {drawerTool && (
             <ToolDrawer
+              key={drawerTool}
               tool={TOOLS_LIST.find((t) => t.id === drawerTool)!}
               tab={drawerTab}
               setTab={setDrawerTab}
@@ -614,6 +834,16 @@ export default function AgentsPage() {
                 )
               }
               onClose={() => setDrawerTool(null)}
+              configValues={toolConfigs[drawerTool] ?? {}}
+              onDone={(values) => {
+                setToolConfigs((prev) => ({ ...prev, [drawerTool]: values }));
+                if (!selectedTools.includes(drawerTool)) {
+                  setSelectedTools((prev) => [...prev, drawerTool]);
+                }
+                const toolName = TOOLS_LIST.find((t) => t.id === drawerTool)?.name ?? 'Tool';
+                addToast(`✅ ${toolName} configured and enabled!`, 'success');
+                setDrawerTool(null);
+              }}
             />
           )}
         </>
@@ -624,51 +854,76 @@ export default function AgentsPage() {
 
 // ─── Agent Card ───────────────────────────────────────────────────────────────
 
-function AgentCard({ agent, onChat, onEdit, onDeploy, onDelete }: {
+function AgentCard({ agent, onClick, onDelete }: {
   agent: Agent;
-  onChat: () => void;
-  onEdit: () => void;
-  onDeploy: () => void;
+  onClick: () => void;
   onDelete: () => void;
 }) {
+  const tools = agent.tools ?? [];
   return (
-    <article className="rounded-xl border flex flex-col p-4 gap-3 transition-all hover:shadow-md"
-      style={{ background: '#fff', borderColor: 'var(--border)' }}>
-      <div className="flex items-start justify-between">
-        <div className="w-11 h-11 rounded-xl flex items-center justify-center text-2xl"
-          style={{ background: agentBg(agent.type) }} aria-hidden="true">
+    <article
+      onClick={onClick}
+      className="group relative rounded-2xl border flex flex-col p-4 gap-3 cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5"
+      style={{ background: '#fff', borderColor: 'var(--border)' }}
+    >
+      {/* Delete on hover */}
+      <button
+        onClick={(e) => { e.stopPropagation(); onDelete(); }}
+        aria-label={`Delete ${agent.name}`}
+        className="absolute top-3 right-3 w-6 h-6 rounded-full flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+        style={{ background: 'var(--bg2)', color: 'var(--rose)' }}
+      >✕</button>
+
+      {/* Icon + Name */}
+      <div className="flex items-center gap-3">
+        <div
+          className="w-11 h-11 rounded-2xl flex items-center justify-center text-2xl shrink-0"
+          style={{ background: agentBg(agent.type) }}
+          aria-hidden="true"
+        >
           {agentEmoji(agent.type)}
         </div>
-        <div className="flex items-center gap-1.5">
-          <span className="px-2 py-0.5 rounded-full text-xs font-semibold"
-            style={{ background: agent.status === 'deployed' ? 'var(--teal-lt)' : 'var(--bg2)', color: agent.status === 'deployed' ? 'var(--teal)' : 'var(--text2)' }}>
-            {agent.status === 'deployed' ? '● Live' : '○ Draft'}
-          </span>
-          <button onClick={onDelete} aria-label={`Delete ${agent.name}`}
-            className="text-xs opacity-40 hover:opacity-100 transition-opacity" style={{ color: 'var(--rose)' }}>✕</button>
-        </div>
+        <h3
+          className="font-bold text-sm leading-snug"
+          style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}
+        >
+          {agent.name}
+        </h3>
       </div>
-      <div>
-        <h3 className="font-bold text-sm" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>{agent.name}</h3>
-        <p className="text-xs mt-0.5" style={{ color: 'var(--text2)' }}>{agent.description || agent.type}</p>
-      </div>
-      <div className="flex items-center gap-1.5 flex-wrap">
+
+      {/* Description */}
+      <p
+        className="text-xs leading-relaxed flex-1"
+        style={{
+          color: 'var(--text2)',
+          display: '-webkit-box',
+          WebkitLineClamp: 3,
+          WebkitBoxOrient: 'vertical',
+          overflow: 'hidden',
+        }}
+      >
+        {agent.description || agent.type}
+      </p>
+
+      {/* Chips: model first (teal), then tools (outlined) */}
+      <div className="flex flex-wrap gap-1.5">
         {agent.model && (
-          <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={{ background: 'var(--blue-lt)', color: 'var(--blue)' }}>{agent.model}</span>
+          <span
+            className="px-2 py-0.5 rounded-full text-xs font-medium border"
+            style={{ borderColor: 'var(--teal)', color: 'var(--teal)', background: 'transparent' }}
+          >
+            {agent.model}
+          </span>
         )}
-        {(agent.tools ?? []).slice(0, 2).map((t) => (
-          <span key={t} className="px-2 py-0.5 rounded-full text-xs" style={{ background: 'var(--bg2)', color: 'var(--text2)' }}>{t}</span>
+        {tools.map((t) => (
+          <span
+            key={t}
+            className="px-2 py-0.5 rounded-full text-xs border"
+            style={{ borderColor: 'var(--border2)', color: 'var(--text2)', background: 'transparent' }}
+          >
+            {t}
+          </span>
         ))}
-        {(agent.tools ?? []).length > 2 && (
-          <span className="text-xs" style={{ color: 'var(--text3)' }}>+{agent.tools.length - 2}</span>
-        )}
-      </div>
-      <div className="flex gap-2 mt-auto">
-        <button onClick={onChat} className="btn-primary flex-1 justify-center text-xs py-2">💬 Chat</button>
-        <button onClick={onEdit} className="btn-ghost flex-1 justify-center text-xs py-2">✏️ Edit</button>
-        {agent.status === 'draft' && (
-          <button onClick={onDeploy} className="btn-ghost text-xs py-2 px-3" style={{ color: 'var(--teal)', borderColor: 'var(--teal)' }}>🚀</button>
-        )}
       </div>
     </article>
   );
@@ -1153,7 +1408,7 @@ function AgentWizardModal(props: WizardProps) {
 // ─── Tool Drawer ──────────────────────────────────────────────────────────────
 
 function ToolDrawer({
-  tool, tab, setTab, enabled, onToggle, onClose,
+  tool, tab, setTab, enabled, onToggle, onClose, configValues, onDone,
 }: {
   tool: ToolDef;
   tab: 'Overview' | 'Steps' | 'Config';
@@ -1161,8 +1416,13 @@ function ToolDrawer({
   enabled: boolean;
   onToggle: () => void;
   onClose: () => void;
+  configValues: Record<string, string>;
+  onDone: (values: Record<string, string>) => void;
 }) {
   const TABS = ['Overview', 'Steps', 'Config'] as const;
+  const [localValues, setLocalValues] = useState<Record<string, string>>(configValues);
+
+  const hasValues = Object.values(localValues).some((v) => v.trim() !== '');
 
   return (
     <div
@@ -1301,12 +1561,15 @@ function ToolDrawer({
             <div className="space-y-4">
               {tool.configSteps.map((field, i) => (
                 <div key={i}>
-                  <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text)' }}>
+                  <label className="block text-xs font-semibold mb-1.5" htmlFor={`cfg-${tool.id}-${i}`} style={{ color: 'var(--text)' }}>
                     {field.label}
                   </label>
                   <input
+                    id={`cfg-${tool.id}-${i}`}
                     type={field.label.toLowerCase().includes('password') || field.label.toLowerCase().includes('token') || field.label.toLowerCase().includes('key') ? 'password' : 'text'}
                     placeholder={field.placeholder}
+                    value={localValues[field.label] ?? ''}
+                    onChange={(e) => setLocalValues((prev) => ({ ...prev, [field.label]: e.target.value }))}
                     className="w-full px-3 py-2.5 rounded-xl border text-sm focus:outline-none"
                     style={{ borderColor: 'var(--border2)', color: 'var(--text)' }}
                   />
@@ -1321,7 +1584,7 @@ function ToolDrawer({
       </div>
 
       {/* Footer */}
-      <div className="px-5 py-4 border-t flex items-center justify-between" style={{ borderColor: 'var(--border)' }}>
+      <div className="px-5 py-4 border-t flex items-center justify-between gap-3" style={{ borderColor: 'var(--border)' }}>
         <label className="flex items-center gap-2 cursor-pointer select-none">
           <input
             type="checkbox"
@@ -1332,7 +1595,13 @@ function ToolDrawer({
           />
           <span className="text-sm font-medium" style={{ color: 'var(--text)' }}>Enable this tool</span>
         </label>
-        <button onClick={onClose} className="btn-primary text-sm px-5">Done</button>
+        <button
+          onClick={() => onDone(localValues)}
+          className="btn-primary text-sm px-5"
+          style={{ background: hasValues ? 'var(--accent)' : undefined }}
+        >
+          {hasValues ? '✅ Save & Enable' : 'Done'}
+        </button>
       </div>
     </div>
   );

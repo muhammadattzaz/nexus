@@ -54,6 +54,9 @@ export class Agent {
   @Prop({ type: [String], default: [] })
   tools: string[];
 
+  @Prop({ type: Object, default: {} })
+  toolConfigs: Record<string, Record<string, string>>;
+
   @Prop({ type: Object, default: { shortTerm: true, longTerm: false } })
   memory: AgentMemory;
 
