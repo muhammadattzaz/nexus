@@ -138,7 +138,7 @@ function ChatHubInner() {
       m.provider.toLowerCase().includes(modelSearch.toLowerCase()),
   );
 
-  const handleSend = async (text: string, attachments?: File[]) => {
+  const handleSend = async (text: string, attachments?: File[], agentId?: string) => {
     const msgContent = text + (attachments?.length ? ` [+${attachments.length} file(s)]` : '');
     setIsTyping(true);
 
@@ -157,7 +157,8 @@ function ChatHubInner() {
       await sendMessage.mutateAsync({ sessionId, role: 'user', content: msgContent });
       await new Promise((r) => setTimeout(r, 1200));
 
-      const aiContent = `I'm **${activeModel.name}** by ${activeModel.provider}. You said: "${text}"\n\nThis is a simulated response. Connect a real AI provider to enable actual responses.`;
+      const agentPrefix = agentId ? `[Agent: ${agentId}] ` : '';
+      const aiContent = `${agentPrefix}I'm **${activeModel.name}** by ${activeModel.provider}. You said: "${text}"\n\nThis is a simulated response. Connect a real AI provider to enable actual responses.`;
       await sendMessage.mutateAsync({ sessionId, role: 'assistant', content: aiContent });
     } catch {
       addToast('Failed to send message. Please try again.', 'error');
@@ -554,7 +555,7 @@ function ChatHubInner() {
                   style={{ borderColor: 'var(--border)', color: 'var(--text)' }}
                 >Details</button>
                 <button
-                  onClick={() => addToast('Pricing page coming soon!', 'info')}
+                  onClick={() => openModelDetail(activeModel.id, 'pricing')}
                   className="flex-1 py-1.5 rounded-lg text-xs font-semibold border transition-colors hover:bg-orange-50"
                   style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}
                 >Pricing</button>

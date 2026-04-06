@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useUIStore } from '@/store/uiStore';
 import { MODELS } from '@/data/models';
 
@@ -39,6 +39,13 @@ const SAMPLE_REVIEWS = [
 export default function ModelDetailModal() {
   const { modelDetailModal, closeModelDetail, addToast } = useUIStore();
   const [activeTab, setActiveTab] = useState<Tab>('overview');
+
+  // Sync to initialTab whenever the modal opens or the requested tab changes
+  useEffect(() => {
+    if (modelDetailModal.open && modelDetailModal.initialTab) {
+      setActiveTab(modelDetailModal.initialTab as Tab);
+    }
+  }, [modelDetailModal.open, modelDetailModal.modelId, modelDetailModal.initialTab]);
 
   if (!modelDetailModal.open || !modelDetailModal.modelId) return null;
 
