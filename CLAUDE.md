@@ -188,3 +188,19 @@ Any component that uses event handlers (`onClick`, `onMouseEnter`, `onChange`, e
 ### AppNav Positioning
 
 `AppNav` is `position: fixed; top: 0; z-50; height: h-16 (64px)`. Every page root container must have `pt-16` to avoid content being hidden under the nav.
+
+
+# Team Rules
+
+## Scope
+- Never touch services outside your assigned module
+- All money values: integer pence only, never floats
+- Idempotency key required on all writes
+
+## Workflow
+- Read api-contract.md before writing any code
+- Done signal = tsc + lint + tests + build all green
+- Contract mismatch → STOP, report to orchestrator
+
+## Commit convention
+feat(wallet): description

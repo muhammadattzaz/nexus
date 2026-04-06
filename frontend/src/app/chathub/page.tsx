@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState, useRef, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuthStore } from '@/store/authStore';
 import { useUIStore } from '@/store/uiStore';
@@ -14,6 +14,7 @@ import {
   useSendMessage,
   useDeleteSession,
 } from '@/hooks/useChat';
+import { useSuggestions } from '@/hooks/useSuggestions';
 import { ChatSession, Message } from '@/types';
 import ChatInputBar from '@/components/chathub/ChatInputBar';
 import ChatMessage from '@/components/chathub/ChatMessage';
@@ -21,24 +22,17 @@ import ModelDetailModal from '@/components/chathub/ModelDetailModal';
 import AppNav from '@/components/layout/AppNav';
 import Badge from '@/components/ui/Badge';
 
-const CATEGORY_CHIPS = [
-  'Use cases',
-  'Monitor the situation',
-  'Create a prototype',
-  'Build a business plan',
-  'Create content',
-  'Analyze & research',
-  'Learn something',
-];
+// ─── Category chip config ─────────────────────────────────────────────────────
 
-const SUGGESTIONS = [
-  'Help me find the best AI model for my project',
-  'I want to build an AI chatbot for my website',
-  'Generate realistic images for my marketing campaign',
-  'Analyse documents and extract key information',
-  'Create AI agents for workflow automation',
-  'Add voice and speech recognition to my app',
-];
+const CHIPS = [
+  { label: 'Use cases',            apiKey: 'recruiting',  icon: '▦' },
+  { label: 'Monitor the situation',apiKey: 'research',    icon: '🔍' },
+  { label: 'Create a prototype',   apiKey: 'prototype',   icon: '<>' },
+  { label: 'Build a business plan',apiKey: 'business',    icon: '💼' },
+  { label: 'Create content',       apiKey: 'learning',    icon: '✏️' },
+  { label: 'Analyze & research',   apiKey: 'research',    icon: '📊' },
+  { label: 'Learn something',      apiKey: 'learning',    icon: '📖' },
+] as const;
 
 const QUICK_ACTIONS = [
   {
@@ -77,10 +71,21 @@ const QUICK_ACTIONS = [
   },
 ];
 
+// ─── Page wrapper (Suspense required for useSearchParams in App Router) ───────
+
 export default function ChatHubPage() {
+  return (
+    <Suspense fallback={null}>
+      <ChatHubInner />
+    </Suspense>
+  );
+}
+
+function ChatHubInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { isAuthenticated, isInitializing } = useAuthStore();
-  const { addToast } = useUIStore();
+  const { addToast, openModelDetail } = useUIStore();
 
   const { data: apiModels, isLoading: modelsLoading } = useModels();
   const models = apiModels ?? MODELS;
@@ -96,9 +101,24 @@ export default function ChatHubPage() {
   const [activeModelId, setActiveModelId] = useState(MODELS[0].id);
   const [modelSearch, setModelSearch] = useState('');
   const [isTyping, setIsTyping] = useState(false);
-  const [activeChip, setActiveChip] = useState('Use cases');
   const [sidebarTab, setSidebarTab] = useState<'sessions' | 'models'>('sessions');
+
+  // ── Lifted input state (shared between ChatInputBar + suggestion clicks) ──
+  const [inputText, setInputText] = useState('');
+  const [inputFiles, setInputFiles] = useState<File[]>([]);
+
+  // ── Chip + dynamic suggestions ───────────────────────────────────────────
+  const [activeChipIdx, setActiveChipIdx] = useState(0);
+  const activeChip = CHIPS[activeChipIdx];
+  const { data: suggestions = [], isLoading: sugLoading } = useSuggestions(activeChip.apiKey);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Pre-fill input from ?q= query param (from landing page action grid)
+  useEffect(() => {
+    const q = searchParams.get('q');
+    if (q) setInputText(q);
+  }, [searchParams]);
 
   useEffect(() => {
     if (!isInitializing && !isAuthenticated) router.push('/signin');
@@ -108,8 +128,7 @@ export default function ChatHubPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [apiMessages, isTyping]);
 
-  if (isInitializing) return null;
-  if (!isAuthenticated) return null;
+  if (isInitializing || !isAuthenticated) return null;
 
   const activeModel = models.find((m) => m.id === activeModelId) ?? models[0] ?? MODELS[0];
 
@@ -121,12 +140,10 @@ export default function ChatHubPage() {
 
   const handleSend = async (text: string, attachments?: File[]) => {
     const msgContent = text + (attachments?.length ? ` [+${attachments.length} file(s)]` : '');
-
     setIsTyping(true);
 
     try {
       let sessionId = activeSessionId;
-
       if (!sessionId) {
         const session = await createSession.mutateAsync({
           title: text.slice(0, 60),
@@ -138,7 +155,6 @@ export default function ChatHubPage() {
       }
 
       await sendMessage.mutateAsync({ sessionId, role: 'user', content: msgContent });
-
       await new Promise((r) => setTimeout(r, 1200));
 
       const aiContent = `I'm **${activeModel.name}** by ${activeModel.provider}. You said: "${text}"\n\nThis is a simulated response. Connect a real AI provider to enable actual responses.`;
@@ -148,6 +164,10 @@ export default function ChatHubPage() {
     } finally {
       setIsTyping(false);
     }
+  };
+
+  const handleSuggestionClick = (text: string) => {
+    setInputText(text);
   };
 
   const handleDeleteSession = async (id: string, e: React.MouseEvent) => {
@@ -167,12 +187,11 @@ export default function ChatHubPage() {
       <AppNav />
 
       <div className="flex flex-1 overflow-hidden">
-        {/* ── LEFT SIDEBAR ── */}
+        {/* ── LEFT SIDEBAR ────────────────────────────────────────────────── */}
         <aside
           className="hidden lg:flex flex-col border-r"
           style={{ width: 252, background: '#fff', borderColor: 'var(--border)' }}
         >
-          {/* Tabs */}
           <div className="flex border-b shrink-0" style={{ borderColor: 'var(--border)' }}>
             {(['sessions', 'models'] as const).map((tab) => (
               <button
@@ -181,8 +200,7 @@ export default function ChatHubPage() {
                 className="flex-1 py-3 text-xs font-semibold capitalize transition-colors"
                 style={{
                   color: sidebarTab === tab ? 'var(--accent)' : 'var(--text2)',
-                  borderBottom:
-                    sidebarTab === tab ? '2px solid var(--accent)' : '2px solid transparent',
+                  borderBottom: sidebarTab === tab ? '2px solid var(--accent)' : '2px solid transparent',
                 }}
               >
                 {tab === 'sessions' ? '💬 Sessions' : '🤖 Models'}
@@ -201,7 +219,6 @@ export default function ChatHubPage() {
                   + New Chat
                 </button>
               </div>
-
               <div className="flex-1 overflow-y-auto">
                 {sessions.length === 0 ? (
                   <p className="px-4 py-6 text-xs text-center" style={{ color: 'var(--text3)' }}>
@@ -214,12 +231,8 @@ export default function ChatHubPage() {
                       onClick={() => setActiveSessionId(session._id)}
                       className="w-full flex items-start gap-2 px-3 py-2.5 text-left transition-colors hover:bg-gray-50 group"
                       style={{
-                        background:
-                          activeSessionId === session._id ? '#FEF3ED' : 'transparent',
-                        borderLeft:
-                          activeSessionId === session._id
-                            ? '2px solid var(--accent)'
-                            : '2px solid transparent',
+                        background: activeSessionId === session._id ? '#FEF3ED' : 'transparent',
+                        borderLeft: activeSessionId === session._id ? '2px solid var(--accent)' : '2px solid transparent',
                       }}
                     >
                       <div
@@ -230,10 +243,7 @@ export default function ChatHubPage() {
                         {session.modelName?.charAt(0)?.toUpperCase() ?? 'N'}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p
-                          className="text-xs font-semibold truncate"
-                          style={{ color: 'var(--text)' }}
-                        >
+                        <p className="text-xs font-semibold truncate" style={{ color: 'var(--text)' }}>
                           {session.title}
                         </p>
                         <p className="text-xs truncate" style={{ color: 'var(--text2)' }}>
@@ -245,9 +255,7 @@ export default function ChatHubPage() {
                         className="opacity-0 group-hover:opacity-100 text-xs px-1 py-0.5 rounded hover:bg-red-50 transition-opacity shrink-0"
                         style={{ color: 'var(--text3)' }}
                         aria-label={`Delete session ${session.title}`}
-                      >
-                        ✕
-                      </button>
+                      >✕</button>
                     </button>
                   ))
                 )}
@@ -256,12 +264,6 @@ export default function ChatHubPage() {
           ) : (
             <>
               <div className="px-3 pt-3 pb-2 shrink-0">
-                <p
-                  className="text-xs font-semibold tracking-widest uppercase mb-2"
-                  style={{ color: 'var(--text2)' }}
-                >
-                  Models
-                </p>
                 <input
                   type="search"
                   value={modelSearch}
@@ -269,20 +271,12 @@ export default function ChatHubPage() {
                   placeholder="Search models..."
                   aria-label="Search models"
                   className="w-full px-3 py-2 rounded-full border text-sm focus:outline-none"
-                  style={{
-                    borderColor: 'var(--border2)',
-                    color: 'var(--text)',
-                    background: 'var(--bg)',
-                  }}
+                  style={{ borderColor: 'var(--border2)', color: 'var(--text)', background: 'var(--bg)' }}
                 />
               </div>
-
               <div className="flex-1 overflow-y-auto">
                 {modelsLoading && (
-                  <div
-                    className="px-3 py-4 text-center text-xs"
-                    style={{ color: 'var(--text3)' }}
-                  >
+                  <div className="px-3 py-4 text-center text-xs" style={{ color: 'var(--text3)' }}>
                     Loading models…
                   </div>
                 )}
@@ -303,21 +297,11 @@ export default function ChatHubPage() {
                         {model.emoji}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p
-                          className="text-sm font-semibold truncate"
-                          style={{ color: 'var(--text)' }}
-                        >
+                        <p className="text-sm font-semibold truncate" style={{ color: 'var(--text)' }}>
                           {model.name}
                         </p>
-                        <p
-                          className="text-xs truncate flex items-center gap-1"
-                          style={{ color: 'var(--text2)' }}
-                        >
-                          <span
-                            className="inline-block w-1.5 h-1.5 rounded-full shrink-0"
-                            style={{ background: '#22c55e' }}
-                            aria-hidden="true"
-                          />
+                        <p className="text-xs truncate flex items-center gap-1" style={{ color: 'var(--text2)' }}>
+                          <span className="inline-block w-1.5 h-1.5 rounded-full shrink-0" style={{ background: '#22c55e' }} aria-hidden="true" />
                           {model.provider}
                         </p>
                       </div>
@@ -329,7 +313,6 @@ export default function ChatHubPage() {
             </>
           )}
 
-          {/* Create Agent CTA */}
           <div className="p-3 border-t shrink-0" style={{ borderColor: 'var(--border)' }}>
             <Link
               href="/agents"
@@ -341,10 +324,10 @@ export default function ChatHubPage() {
           </div>
         </aside>
 
-        {/* ── CENTER MAIN ── */}
+        {/* ── CENTER MAIN ─────────────────────────────────────────────────── */}
         <main className="flex-1 flex flex-col overflow-hidden min-w-0">
           {!activeSessionId ? (
-            /* Welcome / greeting state */
+            /* Welcome state */
             <div className="flex-1 overflow-y-auto flex flex-col items-center justify-center p-6">
               <div className="w-full max-w-2xl">
                 <div
@@ -355,9 +338,7 @@ export default function ChatHubPage() {
                     className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-5 text-2xl"
                     style={{ background: '#FCDEC8' }}
                     aria-hidden="true"
-                  >
-                    ✦
-                  </div>
+                  >✦</div>
                   <h2
                     className="text-2xl font-bold mb-2"
                     style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}
@@ -369,7 +350,6 @@ export default function ChatHubPage() {
                     <strong style={{ color: 'var(--text)' }}>achieve</strong> — I&apos;ll help you
                     discover what&apos;s possible, step by step.
                   </p>
-
                   <div className="text-left">
                     <p
                       className="text-xs font-bold tracking-wider uppercase mb-3 flex items-center gap-1.5"
@@ -379,32 +359,23 @@ export default function ChatHubPage() {
                     </p>
                     <div className="grid grid-cols-3 gap-3">
                       {[
-                        { emoji: '✍️', label: 'Write content', sub: 'Emails, posts, stories' },
-                        { emoji: '🎨', label: 'Create images', sub: 'Art, photos, designs' },
+                        { emoji: '✍️', label: 'Write content',   sub: 'Emails, posts, stories' },
+                        { emoji: '🎨', label: 'Create images',   sub: 'Art, photos, designs' },
                         { emoji: '🔨', label: 'Build something', sub: 'Apps, tools, websites' },
-                        { emoji: '📊', label: 'Analyze data', sub: 'Charts, insights, reports' },
-                        { emoji: '🔍', label: 'Research', sub: 'Facts, summaries, sources' },
+                        { emoji: '📊', label: 'Analyze data',    sub: 'Charts, insights, reports' },
+                        { emoji: '🔍', label: 'Research',        sub: 'Facts, summaries, sources' },
                         { emoji: '📚', label: 'Learn something', sub: 'Guides, courses, answers' },
                       ].map((tile) => (
                         <button
                           key={tile.label}
                           onClick={() => handleSend(tile.label)}
-                          className="flex flex-col items-center gap-2 p-4 rounded-xl border text-center transition-colors hover:bg-gray-50"
+                          className="flex flex-col items-center gap-2 p-4 rounded-xl border text-center transition-colors hover:bg-gray-50 hover:border-[var(--accent)]"
                           style={{ borderColor: 'var(--border)' }}
                         >
-                          <span className="text-2xl" aria-hidden="true">
-                            {tile.emoji}
-                          </span>
+                          <span className="text-2xl" aria-hidden="true">{tile.emoji}</span>
                           <div>
-                            <p
-                              className="text-sm font-semibold"
-                              style={{ color: 'var(--text)' }}
-                            >
-                              {tile.label}
-                            </p>
-                            <p className="text-xs" style={{ color: 'var(--text2)' }}>
-                              {tile.sub}
-                            </p>
+                            <p className="text-sm font-semibold" style={{ color: 'var(--text)' }}>{tile.label}</p>
+                            <p className="text-xs" style={{ color: 'var(--text2)' }}>{tile.sub}</p>
                           </div>
                         </button>
                       ))}
@@ -415,15 +386,9 @@ export default function ChatHubPage() {
             </div>
           ) : (
             /* Chat messages */
-            <div
-              className="flex-1 overflow-y-auto p-4"
-              style={{ background: 'var(--bg)' }}
-            >
+            <div className="flex-1 overflow-y-auto p-4" style={{ background: 'var(--bg)' }}>
               {messagesLoading ? (
-                <div
-                  className="flex justify-center py-10 text-sm animate-pulse"
-                  style={{ color: 'var(--text2)' }}
-                >
+                <div className="flex justify-center py-10 text-sm animate-pulse" style={{ color: 'var(--text2)' }}>
                   Loading messages…
                 </div>
               ) : (
@@ -434,10 +399,7 @@ export default function ChatHubPage() {
                     content={msg.content}
                     timestamp={
                       msg.createdAt
-                        ? new Date(msg.createdAt).toLocaleTimeString([], {
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })
+                        ? new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
                         : undefined
                     }
                   />
@@ -449,9 +411,7 @@ export default function ChatHubPage() {
                     className="w-8 h-8 rounded-xl flex items-center justify-center text-white text-sm font-bold"
                     style={{ background: 'var(--accent)' }}
                     aria-hidden="true"
-                  >
-                    N
-                  </div>
+                  >N</div>
                   <div
                     className="px-4 py-3 rounded-2xl text-sm"
                     style={{ background: '#fff', border: '1px solid var(--border)' }}
@@ -465,103 +425,188 @@ export default function ChatHubPage() {
             </div>
           )}
 
-          {/* ── INPUT AREA ── */}
+          {/* ── INPUT AREA ─────────────────────────────────────────────────── */}
           <div
-            className="px-4 pt-3 pb-2 border-t shrink-0"
+            className="px-4 pt-3 pb-3 border-t shrink-0"
             style={{ borderColor: 'var(--border)', background: '#fff' }}
           >
+            {/* Input box */}
             <ChatInputBar
+              value={inputText}
+              onChange={setInputText}
               onSend={handleSend}
-              placeholder={`Message ${activeModel.name}…`}
+              placeholder={`Describe your project, ask a question, or just say hi — I'm here to help...`}
               selectedModel={activeModelId}
               onModelChange={setActiveModelId}
               disabled={isTyping || createSession.isPending || sendMessage.isPending}
+              files={inputFiles}
+              onFilesChange={setInputFiles}
             />
 
-            {/* Category chips */}
-            <div className="mt-3 flex items-center gap-2 overflow-x-auto pb-1 scrollbar-hide">
-              {CATEGORY_CHIPS.map((chip) => (
-                <button
-                  key={chip}
-                  onClick={() => setActiveChip(chip)}
-                  className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors border whitespace-nowrap"
-                  style={
-                    activeChip === chip
-                      ? { background: 'var(--text)', color: '#fff', borderColor: 'var(--text)' }
-                      : { background: '#fff', color: 'var(--text2)', borderColor: 'var(--border)' }
-                  }
-                >
-                  {chip === 'Use cases' && <span aria-hidden="true">▦</span>}
-                  {chip === 'Monitor the situation' && <span aria-hidden="true">🔍</span>}
-                  {chip === 'Create a prototype' && <span aria-hidden="true">{'<>'}</span>}
-                  {chip === 'Build a business plan' && <span aria-hidden="true">💼</span>}
-                  {chip === 'Create content' && <span aria-hidden="true">✏️</span>}
-                  {chip === 'Analyze & research' && <span aria-hidden="true">📊</span>}
-                  {chip === 'Learn something' && <span aria-hidden="true">📖</span>}
-                  {chip}
-                </button>
-              ))}
+            {/* ── Category chips ────────────────────────────────────────── */}
+            <div className="mt-3 flex items-center gap-1.5 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+              {CHIPS.map((chip, i) => {
+                const isActive = activeChipIdx === i;
+                return (
+                  <button
+                    key={chip.label}
+                    onClick={() => setActiveChipIdx(i)}
+                    className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors border whitespace-nowrap"
+                    style={
+                      isActive
+                        ? { background: 'var(--text)', color: '#fff', borderColor: 'var(--text)' }
+                        : { background: '#fff', color: 'var(--text2)', borderColor: 'var(--border)' }
+                    }
+                  >
+                    <span aria-hidden="true" style={{ fontSize: '10px' }}>{chip.icon}</span>
+                    {chip.label}
+                  </button>
+                );
+              })}
             </div>
 
-            {/* Suggestion links */}
-            <div className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 pb-2">
-              {SUGGESTIONS.map((s) => (
-                <button
-                  key={s}
-                  onClick={() => handleSend(s)}
-                  className="text-left text-xs flex items-start gap-1.5 py-0.5 hover:underline"
-                  style={{ color: 'var(--text2)' }}
-                >
-                  <span className="mt-0.5" style={{ color: 'var(--text3)' }}>
-                    •
-                  </span>
-                  {s}
-                </button>
-              ))}
+            {/* ── Dynamic suggestions ───────────────────────────────────── */}
+            <div className="mt-2 pb-1">
+              {sugLoading ? (
+                <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 pb-1">
+                  {[1, 2, 3, 4].map((i) => (
+                    <div key={i} className="h-4 rounded animate-pulse" style={{ background: 'var(--bg2)', width: `${50 + i * 10}%` }} />
+                  ))}
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-x-6 gap-y-0.5">
+                  {suggestions.map((s, i) => (
+                    <button
+                      key={i}
+                      onClick={() => handleSuggestionClick(s.text)}
+                      className="text-left text-xs flex items-start gap-1.5 py-1 group"
+                      style={{ color: 'var(--text2)' }}
+                      aria-label={`Use suggestion: ${s.text}`}
+                    >
+                      <span className="mt-0.5 shrink-0" style={{ color: 'var(--text3)' }}>•</span>
+                      <span className="group-hover:underline leading-relaxed">
+                        {highlightWords(s.text)}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </main>
 
-        {/* ── RIGHT PANEL — QUICK ACTIONS ── */}
+        {/* ── RIGHT PANEL ─────────────────────────────────────────────────── */}
         <aside
           className="hidden xl:flex flex-col border-l overflow-y-auto"
-          style={{ width: 252, background: '#fff', borderColor: 'var(--border)' }}
+          style={{ width: 264, background: '#fff', borderColor: 'var(--border)' }}
         >
-          <div
-            className="px-4 pt-4 pb-3 border-b shrink-0"
-            style={{ borderColor: 'var(--border)' }}
-          >
-            <p className="text-sm font-bold" style={{ color: 'var(--text)' }}>
-              QUICK ACTIONS
+          {/* ACTIVE MODEL */}
+          <div className="px-4 pt-4 pb-4 border-b shrink-0" style={{ borderColor: 'var(--border)' }}>
+            <p className="text-[10px] font-bold tracking-widest uppercase mb-3" style={{ color: 'var(--text3)' }}>
+              ACTIVE MODEL
             </p>
+            <div className="rounded-xl border p-3" style={{ borderColor: 'var(--border)' }}>
+              {/* Header */}
+              <div className="flex items-start gap-2.5 mb-2.5">
+                <div
+                  className="w-10 h-10 rounded-xl flex items-center justify-center text-xl shrink-0"
+                  style={{ background: '#FCDEC8' }}
+                  aria-hidden="true"
+                >
+                  {activeModel.emoji}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <p className="text-sm font-bold" style={{ color: 'var(--text)' }}>{activeModel.name}</p>
+                    <span
+                      className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold shrink-0"
+                      style={{ background: '#dcfce7', color: '#16a34a' }}
+                    >Live</span>
+                  </div>
+                  <p className="text-xs" style={{ color: 'var(--text2)' }}>by {activeModel.provider}</p>
+                </div>
+              </div>
+              {/* Description */}
+              <p className="text-xs leading-relaxed mb-3" style={{ color: 'var(--text2)' }}>
+                {activeModel.description}
+              </p>
+              {/* Stats grid */}
+              <div className="grid grid-cols-3 gap-1.5 mb-3">
+                {[
+                  { value: activeModel.contextWindow, label: 'CONTEXT' },
+                  { value: `$${activeModel.pricing.inputPer1M}`, label: '/1M TK' },
+                  { value: `${activeModel.rating}`, label: 'RATING' },
+                ].map((stat, idx) => (
+                  <div key={stat.label} className="rounded-lg p-2 text-center" style={{ background: 'var(--bg2)' }}>
+                    <p className="text-xs font-bold flex items-center justify-center gap-0.5" style={{ color: 'var(--text)' }}>
+                      {stat.value}
+                      {idx === 2 && <span className="text-yellow-400">★</span>}
+                    </p>
+                    <p className="text-[10px] mt-0.5" style={{ color: 'var(--text3)' }}>{stat.label}</p>
+                  </div>
+                ))}
+              </div>
+              {/* Action buttons */}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => openModelDetail(activeModel.id)}
+                  className="flex-1 py-1.5 rounded-lg text-xs font-semibold border transition-colors hover:bg-gray-50"
+                  style={{ borderColor: 'var(--border)', color: 'var(--text)' }}
+                >Details</button>
+                <button
+                  onClick={() => addToast('Pricing page coming soon!', 'info')}
+                  className="flex-1 py-1.5 rounded-lg text-xs font-semibold border transition-colors hover:bg-orange-50"
+                  style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}
+                >Pricing</button>
+              </div>
+            </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto py-2">
+          {/* USAGE OVERVIEW */}
+          <div className="px-4 pt-4 pb-4 border-b shrink-0" style={{ borderColor: 'var(--border)' }}>
+            <p className="text-[10px] font-bold tracking-widest uppercase mb-3" style={{ color: 'var(--text3)' }}>
+              USAGE OVERVIEW
+            </p>
+            <div className="rounded-xl border p-3" style={{ borderColor: 'var(--border)' }}>
+              <div className="grid grid-cols-3 gap-1.5 mb-3">
+                {[
+                  { value: (sessions.length * 8 + 4_000).toLocaleString(), label: 'REQUESTS' },
+                  { value: '1.4s', label: 'AVG LATENCY' },
+                  { value: `$${(sessions.length * 0.12 + 3.5).toFixed(2)}`, label: 'COST (TODAY)' },
+                ].map((stat) => (
+                  <div key={stat.label} className="rounded-lg p-2 text-center" style={{ background: 'var(--bg2)' }}>
+                    <p className="text-xs font-bold" style={{ color: 'var(--text)' }}>{stat.value}</p>
+                    <p className="text-[10px] mt-0.5 leading-tight" style={{ color: 'var(--text3)' }}>{stat.label}</p>
+                  </div>
+                ))}
+              </div>
+              <UsageBarChart sessionCount={sessions.length} />
+            </div>
+          </div>
+
+          {/* QUICK ACTIONS */}
+          <div className="px-4 pt-4 pb-4 flex-1">
+            <p className="text-[10px] font-bold tracking-widest uppercase mb-2" style={{ color: 'var(--text3)' }}>
+              QUICK ACTIONS
+            </p>
             {QUICK_ACTIONS.map((group) => (
               <div key={group.section} className="mb-1">
-                <p
-                  className="px-4 pt-3 pb-1.5 text-xs font-semibold tracking-wider uppercase"
-                  style={{ color: 'var(--text2)' }}
-                >
+                <p className="pt-2 pb-1.5 text-[10px] font-semibold tracking-wider uppercase" style={{ color: 'var(--text3)' }}>
                   {group.section}
                 </p>
                 {group.items.map((item) => (
                   <Link
                     key={item.label}
                     href={item.href}
-                    className="flex items-center gap-2.5 px-3 py-2 mx-2 rounded-xl text-sm transition-colors hover:bg-gray-50"
+                    className="flex items-center gap-2 py-1.5 rounded-xl text-xs transition-colors hover:bg-gray-50"
                     style={{ color: 'var(--text)' }}
                   >
                     <span
-                      className="w-7 h-7 flex items-center justify-center rounded-lg text-base shrink-0"
+                      className="w-6 h-6 flex items-center justify-center rounded-lg text-sm shrink-0"
                       style={{ background: 'var(--bg2)' }}
                       aria-hidden="true"
-                    >
-                      {item.emoji}
-                    </span>
-                    <span className="text-sm" style={{ color: 'var(--text)' }}>
-                      {item.label}
-                    </span>
+                    >{item.emoji}</span>
+                    {item.label}
                   </Link>
                 ))}
               </div>
@@ -572,5 +617,44 @@ export default function ChatHubPage() {
 
       <ModelDetailModal />
     </div>
+  );
+}
+
+// ─── Usage bar chart ─────────────────────────────────────────────────────────
+
+function UsageBarChart({ sessionCount }: { sessionCount: number }) {
+  const bars = Array.from({ length: 22 }, (_, i) => {
+    const v = 15 + ((i * 13 + sessionCount * 7 + i * i) % 55);
+    return Math.max(6, v);
+  });
+  const max = Math.max(...bars);
+  return (
+    <div className="flex items-end gap-px h-12" aria-label="Usage chart" role="img">
+      {bars.map((h, i) => (
+        <div
+          key={i}
+          className="flex-1 rounded-sm transition-all"
+          style={{
+            height: `${Math.round((h / max) * 100)}%`,
+            background: i >= bars.length - 3 ? 'var(--accent)' : '#BFDBFE',
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+// ─── Highlight key words in suggestion text ───────────────────────────────────
+// Words that appear after "my " or key action words get accent color
+
+function highlightWords(text: string): React.ReactNode {
+  // Highlight words after "my " to match the reference design (orange tint on "my X" phrases)
+  const parts = text.split(/\b(my \w+(?:\s\w+)?|AI\s\w+|workflow automation|machine learning|business plan)\b/gi);
+  return parts.map((part, i) =>
+    i % 2 === 1 ? (
+      <span key={i} style={{ color: 'var(--accent)' }}>{part}</span>
+    ) : (
+      part
+    )
   );
 }

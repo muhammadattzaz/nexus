@@ -27,12 +27,14 @@ export class MarketplaceController {
   @ApiQuery({ name: 'minRating', required: false, type: Number })
   @ApiQuery({ name: 'maxPrice', required: false, type: Number })
   @ApiQuery({ name: 'search', required: false })
+  @ApiQuery({ name: 'tier', required: false })
   findAll(
     @Query('type') type?: string,
     @Query('provider') provider?: string,
     @Query('minRating') minRating?: number,
     @Query('maxPrice') maxPrice?: number,
     @Query('search') search?: string,
+    @Query('tier') tier?: string,
   ) {
     return this.marketplaceService.findAll({
       type,
@@ -40,6 +42,7 @@ export class MarketplaceController {
       minRating,
       maxPrice,
       search,
+      tier,
     });
   }
 

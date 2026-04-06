@@ -3,6 +3,15 @@ import api from '@/lib/axios';
 import { ModelData } from '@/data/models';
 import { MarketplaceItem } from '@/types';
 
+export interface MarketplaceFilterParams {
+  search?: string;
+  type?: string;      // comma-separated backend types e.g. 'llm,multimodal,embedding,tool'
+  provider?: string;  // comma-separated provider names
+  minRating?: number;
+  maxPrice?: number;
+  tier?: string;      // 'free' | 'paid'
+}
+
 const TYPE_EMOJI: Record<string, string> = {
   llm: '🧠',
   image: '🎨',
@@ -14,7 +23,6 @@ const TYPE_EMOJI: Record<string, string> = {
   tool: '🔧',
 };
 
-// Map backend types to frontend filter types
 const TYPE_MAP: Record<string, string> = {
   llm: 'language',
   multimodal: 'language',
@@ -55,11 +63,24 @@ function toModelData(item: MarketplaceItem): ModelData {
   };
 }
 
-export function useMarketplace() {
+function buildApiParams(params?: MarketplaceFilterParams): Record<string, string | number> | undefined {
+  if (!params) return undefined;
+  const p: Record<string, string | number> = {};
+  if (params.search) p.search = params.search;
+  if (params.type) p.type = params.type;
+  if (params.provider) p.provider = params.provider;
+  if (params.minRating !== undefined && params.minRating > 0) p.minRating = params.minRating;
+  if (params.maxPrice !== undefined && params.maxPrice < 100) p.maxPrice = params.maxPrice;
+  if (params.tier) p.tier = params.tier;
+  return Object.keys(p).length > 0 ? p : undefined;
+}
+
+export function useMarketplace(params?: MarketplaceFilterParams) {
   return useQuery<ModelData[]>({
-    queryKey: ['marketplace'],
+    queryKey: ['marketplace', params ?? {}],
     queryFn: async () => {
-      const res = await api.get('/marketplace/items');
+      const apiParams = buildApiParams(params);
+      const res = await api.get('/marketplace/items', apiParams ? { params: apiParams } : undefined);
       return (res.data.data as MarketplaceItem[]).map(toModelData);
     },
     staleTime: 5 * 60 * 1000,

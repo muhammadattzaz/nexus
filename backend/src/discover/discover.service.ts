@@ -3,7 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Paper, PaperDocument } from './schemas/paper.schema';
 
-interface StaticPaper {
+export interface StaticPaper {
   id: string;
   title: string;
   summary: string;

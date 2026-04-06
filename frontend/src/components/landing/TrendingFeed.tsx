@@ -1,43 +1,21 @@
-const TRENDS = [
-  {
-    badge: '🆕 Just Released',
-    badgeBg: '#E2F5EF',
-    badgeColor: '#0A5E49',
-    lab: 'Anthropic',
-    title: 'Claude Opus 4.6 & Sonnet 4.6',
-    excerpt:
-      'Adaptive Thinking and 1M token context (beta) mark a major leap in agent capability.',
-  },
-  {
-    badge: '🔥 Hot',
-    badgeBg: '#FEF2F2',
-    badgeColor: '#DC2626',
-    lab: 'Google DeepMind',
-    title: 'Gemini 3.1 Pro — Thought Signatures',
-    excerpt:
-      'Thought Signatures bring new transparency to deep reasoning. 5M context window crushes previous records.',
-  },
-  {
-    badge: '🤖 Agent Use',
-    badgeBg: '#EBF0FC',
-    badgeColor: '#1E4DA8',
-    lab: 'OpenAI',
-    title: 'GPT-5.4 — Native agent use',
-    excerpt:
-      'GPT-5.4 introduces native agent use, letting it operate browsers, apps, and files autonomously.',
-  },
-  {
-    badge: '⚡ Real-Time',
-    badgeBg: '#FDF5E0',
-    badgeColor: '#8A5A00',
-    lab: 'xAI',
-    title: 'Grok-4-1 Fast — 4-Agent Architecture',
-    excerpt:
-      "Grok's 4-agent architecture with real-time X (Twitter) data access and 2M context window.",
-  },
-];
+'use client';
+import { useDiscoverPapers } from '@/hooks/useDiscover';
+import { RESEARCH_PAPERS } from '@/data/research';
+import Link from 'next/link';
+
+const CATEGORY_STYLE: Record<string, { badge: string; bg: string; color: string }> = {
+  reasoning:      { badge: '🔬 Reasoning',    bg: '#EBF0FC', color: '#1E4DA8' },
+  multimodal:     { badge: '🎯 Multimodal',   bg: '#E2F5EF', color: '#0A5E49' },
+  alignment:      { badge: '🛡️ Alignment',    bg: '#FEF2F2', color: '#DC2626' },
+  efficiency:     { badge: '⚡ Efficiency',   bg: '#FDF5E0', color: '#8A5A00' },
+  'open-weights': { badge: '🔓 Open Weights', bg: '#EBF0FC', color: '#1E4DA8' },
+};
 
 export default function TrendingFeed() {
+  const { data: apiPapers, isLoading } = useDiscoverPapers();
+
+  const papers = (apiPapers ?? RESEARCH_PAPERS).slice(0, 4);
+
   return (
     <section className="my-16">
       <div className="flex items-center justify-between mb-8">
@@ -47,42 +25,51 @@ export default function TrendingFeed() {
         >
           🔥 Trending This Week
         </h2>
-        <a
-          href="/discover"
-          className="text-sm font-medium hover:underline"
-          style={{ color: 'var(--accent)' }}
-        >
+        <Link href="/discover" className="text-sm font-medium hover:underline" style={{ color: 'var(--accent)' }}>
           View research feed →
-        </a>
+        </Link>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {TRENDS.map((trend) => (
-          <div
-            key={trend.title}
-            className="p-5 rounded-2xl border transition-shadow hover:shadow-md cursor-pointer"
-            style={{ background: 'var(--white)', borderColor: 'var(--border)' }}
-          >
-            <span
-              className="inline-block px-2 py-1 rounded-full text-xs font-semibold mb-3"
-              style={{ background: trend.badgeBg, color: trend.badgeColor }}
-            >
-              {trend.badge}
-            </span>
-            <p className="text-xs mb-2" style={{ color: 'var(--text3)' }}>
-              {trend.lab}
-            </p>
-            <h3
-              className="text-sm font-semibold mb-2 leading-snug"
-              style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}
-            >
-              {trend.title}
-            </h3>
-            <p className="text-xs leading-relaxed" style={{ color: 'var(--text2)' }}>
-              {trend.excerpt}
-            </p>
-          </div>
-        ))}
-      </div>
+
+      {isLoading ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="h-44 rounded-2xl animate-pulse" style={{ background: 'var(--bg2)' }} />
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {papers.map((paper) => {
+            const style = CATEGORY_STYLE[paper.category] ?? CATEGORY_STYLE.reasoning;
+            return (
+              <Link
+                key={paper.id}
+                href="/discover"
+                className="p-5 rounded-2xl border transition-shadow hover:shadow-md cursor-pointer block"
+                style={{ background: 'var(--white)', borderColor: 'var(--border)' }}
+              >
+                <span
+                  className="inline-block px-2 py-1 rounded-full text-xs font-semibold mb-3"
+                  style={{ background: style.bg, color: style.color }}
+                >
+                  {style.badge}
+                </span>
+                <p className="text-xs mb-2" style={{ color: 'var(--text3)' }}>
+                  {paper.lab}
+                </p>
+                <h3
+                  className="text-sm font-semibold mb-2 leading-snug"
+                  style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}
+                >
+                  {paper.title}
+                </h3>
+                <p className="text-xs leading-relaxed line-clamp-3" style={{ color: 'var(--text2)' }}>
+                  {paper.summary}
+                </p>
+              </Link>
+            );
+          })}
+        </div>
+      )}
     </section>
   );
 }

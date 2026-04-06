@@ -8,11 +8,12 @@ import {
 import { CreateItemDto } from './dto/create-item.dto';
 
 interface FindAllQuery {
-  type?: string;
-  provider?: string;
+  type?: string;      // comma-separated backend types e.g. 'llm,multimodal'
+  provider?: string;  // comma-separated provider names
   minRating?: number;
   maxPrice?: number;
   search?: string;
+  tier?: string;      // 'free' | 'paid'
 }
 
 @Injectable()
@@ -30,11 +31,21 @@ export class MarketplaceService implements OnModuleInit {
     const filter: any = {};
 
     if (query.type) {
-      filter.type = query.type;
+      const types = query.type.split(',').map((t) => t.trim()).filter(Boolean);
+      filter.type = types.length === 1 ? types[0] : { $in: types };
     }
 
     if (query.provider) {
-      filter.provider = { $regex: query.provider, $options: 'i' };
+      const providers = query.provider.split(',').map((p) => p.trim()).filter(Boolean);
+      if (providers.length === 1) {
+        filter.provider = { $regex: providers[0], $options: 'i' };
+      } else {
+        filter.$or = providers.map((p) => ({ provider: { $regex: p, $options: 'i' } }));
+      }
+    }
+
+    if (query.tier) {
+      filter['pricing.tier'] = query.tier;
     }
 
     if (query.minRating !== undefined) {
